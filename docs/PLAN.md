@@ -44,15 +44,19 @@ Guards that come with it: `check-recall-reclaim.ts` (safe delete),
 2. **Tenancy.** Production is multi-workspace (an `org` column on everything).
    Keep the column so one install can serve several brands, with a default of
    `default`, so a single user never has to think about it.
-3. **YouTube upload.** Production uploads through Zernio. The open version
-   needs a path most people can use:
-   - **Direct YouTube Data API** (OAuth, resumable upload). No third party, but
-     every user sets up a Google Cloud project and OAuth consent.
-   - **Adapter interface** with YouTube-direct as the default and Zernio as an
-     optional adapter. This is the recommendation: the adapter boundary already
-     exists in `publish.ts` as `publishToYouTube` / `verifyPublished`.
-4. **Summarizer.** Gemini today. Put it behind a one-function interface so
-   OpenAI and Anthropic keys work too.
+3. **YouTube upload: Zernio, as production does** (decided 2026-09-21). The
+   repo shows the workflow Quartzi actually runs, so publishing goes through
+   Zernio's API to the owner's connected YouTube channel, unlisted. Zernio is
+   called directly from the recorder function instead of through Quartzi's
+   internal comms function. `publishToYouTube` / `verifyPublished` stay the
+   boundary, so a YouTube-direct adapter can be added later without touching
+   the rest.
+4. **Summarizer: Gemini free tier, as production does** (decided 2026-09-21).
+   `gemini-2.5-flash-lite` for the summary and `gemini-2.5-flash` for next steps
+   and the timeline, on a free Google AI Studio key. One function wraps the
+   call, so the model is an environment variable. **Privacy note for the
+   README:** on the free tier Google may use submitted content (call
+   transcripts) to improve its products; use a paid key for client calls.
 5. **Branding.** Strip Quartzi's name, mark and colours; the recap page takes a
    brand name, logo URL and accent colour from settings.
 6. **Secrets.** Nothing is copied from production config. Every key is named in
@@ -90,9 +94,8 @@ These are production incidents, not preferences. Each one has a guard.
 
 ## Open decisions
 
-1. **YouTube path:** direct API only, or an adapter with Zernio optional?
-   (Recommended: adapter.)
-2. **Summarizer default:** keep Gemini, or default to Anthropic/OpenAI?
+1. ~~YouTube path~~: Zernio, as production (decided 2026-09-21).
+2. ~~Summarizer default~~: Gemini free tier, as production (decided 2026-09-21).
 3. **Marketplace:** the listing under JakeScalesAI Studio on the Quartzi
    Marketplace is owned by the Studio lane. The listing points here once M5
    lands.
