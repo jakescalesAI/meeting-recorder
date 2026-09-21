@@ -1,0 +1,7 @@
+# Both functions check their own credentials (RECORDER_SECRET for recorder,
+# the signed link for recap), so Supabase's JWT check is off for them.
+[functions.recorder]
+verify_jwt = false
+
+[functions.recap]
+verify_jwt = false

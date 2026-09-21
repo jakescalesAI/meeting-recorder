@@ -83,14 +83,18 @@ These are production incidents, not preferences. Each one has a guard.
 
 ## Milestones
 
-| | What | Done when |
+| | What | Status (2026-09-21) |
 |---|---|---|
-| **M0** | This skeleton and plan | Repo public, plan reviewed |
-| **M1** | Schema + Recall ingest | A real Recall bot's recording lands as a row via the webhook |
-| **M2** | YouTube publish + safe reclaim | Unlisted upload plays; reclaim guard green, including its plant |
-| **M3** | Summary + timeline | Next steps + timeline for a real call, estimated times flagged |
-| **M4** | Recap page | Signed link renders next steps, player, timeline seek, 3 downloads |
-| **M5** | Docs + deploy script + Marketplace listing | A new Supabase project goes from zero to a working recap by following the README |
+| **M0** | Skeleton and plan | Done |
+| **M1** | Schema + Recall ingest (with real per-line times) | Built; tested against fakes |
+| **M2** | Zernio publish + safe reclaim | Built; tested against fakes, reclaim test plant-checked |
+| **M3** | Next steps + timeline (Gemini) | Built; tested against fakes |
+| **M4** | Recap page | Built; rendered with sample data, desktop and phone |
+| **M5** | Setup guide + Marketplace listing | README setup written; listing with the Studio lane |
+
+**Not yet proven against the real services.** Every step has run against fakes
+(`scripts/check-recorder.ts`, 23 checks). The first real deploy, one real call
+through Recall, Zernio, YouTube and Gemini, is the proof still owed.
 
 ## Open decisions
 
