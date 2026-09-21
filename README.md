@@ -101,12 +101,16 @@ outward action, so it waits for you to say where.
 run it in the SQL editor. It runs every 10 minutes: uploads, checks YouTube,
 builds timelines, cleans up Recall.
 
-**6. Recall's webhook** (Recall dashboard → Webhooks) so recordings are picked up
-the moment they finish:
+**6. Recall's webhook** (Recall dashboard → Webhooks → Add endpoint), so a
+recording is uploaded and analysed the moment it finishes:
 
 ```
-https://<project-ref>.supabase.co/functions/v1/recorder?action=webhook&secret=<RECORDER_SECRET>
+https://<project-ref>.supabase.co/functions/v1/recorder?action=webhook
 ```
+
+Subscribe it to `recording.done`, `bot.done` and `transcript.done`, then copy the
+endpoint's signing secret (`whsec_...`) into `RECALL_SVIX_SECRET` and run step 2
+again. From then on only deliveries signed by Recall are accepted.
 
 **7. The recap page.** Put your recap function URL in `site/config.js` and host
 the `site/` folder anywhere (Netlify, Vercel, Cloudflare Pages, S3, nginx).
@@ -150,6 +154,11 @@ These came from production incidents, and each one has a test in
   seconds out rather than published inline (inline video uploads time out).
 - **Only bots this install sent are picked up**, so a Recall workspace you also
   use for something else is never swept in.
+- **One upload per meeting.** Recall sends several "done" events per call and
+  retries; each meeting is claimed in one database update before uploading, so
+  overlapping events and sweeps can't put it on the channel twice.
+- **Only Recall can trigger it.** With `RECALL_SVIX_SECRET` set, webhook
+  deliveries must carry Recall's signature (and be under 5 minutes old).
 - **Recap links are signed.** Only the server can mint one; a changed id or
   signature is refused.
 - **Timeline times are real**, taken from Recall's word timestamps. If a

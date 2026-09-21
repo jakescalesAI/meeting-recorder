@@ -20,6 +20,9 @@
  *   g. RECLAIM: YouTube 404 keeps the Recall original even though Zernio said
  *      Published; YouTube 200 deletes it. This is the 2026-09-21 incident.
  *   h. a signed recap link opens in `recap`, and a tampered one does not
+ *   i. Recall's signed webhook: recording.done uploads once AND builds the
+ *      timeline in the same request; bot.done after it uploads nothing; an
+ *      unsigned or wrongly signed delivery is refused
  */
 
 const SECRET = 'test-recorder-secret'
@@ -31,6 +34,8 @@ Deno.env.set('RECALL_API_KEY', 'test-recall')
 Deno.env.set('ZERNIO_API_KEY', 'test-zernio')
 Deno.env.set('GEMINI_API_KEY', 'test-gemini')
 Deno.env.set('RECLAIM_AFTER_HOURS', '0')
+const SVIX_KEY = crypto.getRandomValues(new Uint8Array(24))
+Deno.env.set('RECALL_SVIX_SECRET', 'whsec_' + btoa(String.fromCharCode(...SVIX_KEY)))
 
 /* ------------------------------------------------ in-memory PostgREST -- */
 
@@ -253,6 +258,29 @@ check('recap opens with the signed link', good.status === 200 && good.body.youtu
 check('entries carry their times', good.body.entries.map((e: Row) => e.at).join(',') === '3,62,128')
 const bad = await open('0'.repeat(64))
 check('a tampered signature is refused', bad.status === 401)
+
+console.log('\ni. Recall webhook, signed')
+async function signed(event: string, botId: string, key = SVIX_KEY, sign = true) {
+  const raw = JSON.stringify({ event, data: { bot: { id: botId, metadata: { org: 'default', source: 'meeting-recorder' } }, data: { code: 'done' } } })
+  const id = 'msg_' + crypto.randomUUID(), ts = String(Math.floor(Date.now() / 1000))
+  const k = await crypto.subtle.importKey('raw', key, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  const mac = new Uint8Array(await crypto.subtle.sign('HMAC', k, new TextEncoder().encode(`${id}.${ts}.${raw}`)))
+  const h: Record<string, string> = { 'content-type': 'application/json' }
+  if (sign) Object.assign(h, { 'webhook-id': id, 'webhook-timestamp': ts, 'webhook-signature': 'v1,' + btoa(String.fromCharCode(...mac)) })
+  const x = await realFetch('http://localhost:8601/?action=webhook', { method: 'POST', headers: h, body: raw })
+  return { status: x.status, body: await x.json() }
+}
+const postsBefore = calls.zernioPosts.length
+r = await signed('recording.done', 'bot-hook')
+const hooked = tables.meetings.find((m) => m.recall_bot_id === 'bot-hook')
+check('signed recording.done accepted', r.status === 200 && r.body.ok === true, JSON.stringify(r.body).slice(0, 300))
+check('one upload started', calls.zernioPosts.length === postsBefore + 1, String(calls.zernioPosts.length - postsBefore))
+check('timeline built in the same request', Boolean(hooked?.timeline_at) && hooked?.timeline?.estimated === false, JSON.stringify(hooked?.timeline))
+r = await signed('bot.done', 'bot-hook')
+check('bot.done after it: no second upload', calls.zernioPosts.length === postsBefore + 1, JSON.stringify(r.body).slice(0, 200))
+check('unsigned delivery refused', (await signed('recording.done', 'bot-x', SVIX_KEY, false)).status === 401)
+check('wrongly signed delivery refused', (await signed('recording.done', 'bot-x', crypto.getRandomValues(new Uint8Array(24)))).status === 401)
+check('neither stored anything', !tables.meetings.some((m) => m.recall_bot_id === 'bot-x'))
 
 console.log(`\n${passed} passed, ${failures.length} failed`)
 if (failures.length) { console.log(failures.map((f) => '  - ' + f).join('\n')); Deno.exit(1) }

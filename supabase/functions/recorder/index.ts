@@ -1,13 +1,14 @@
 // recorder: the whole pipeline in one function.
 //
 //   POST ?action=join      { meeting_url, title?, org? }  send the notetaker to a call
-//   POST ?action=webhook   (Recall calls this)            ingest + publish as soon as a recording is done
+//   POST ?action=webhook   (Recall calls this)            store, upload and build the timeline the moment a recording is done
 //   POST ?action=sweep     (cron)                         catch up on everything below
 //   POST ?action=link      { id }                         the signed recap URL for a meeting
 //   GET  ?action=status                                   counts, for a quick look
 //
-// Every call needs RECORDER_SECRET, as the `x-recorder-secret` header or, for
-// Recall's webhook URL (which cannot carry headers), `?secret=`.
+// Every call needs RECORDER_SECRET as the `x-recorder-secret` header. Recall's
+// webhook is verified by its own signature instead (RECALL_SVIX_SECRET), or by
+// `?secret=` when no signing secret is set.
 //
 // The sweep, in order:
 //   1. discover   finished recordings from bots this install sent, not yet stored
@@ -24,6 +25,7 @@ import { youtubePlays } from '../_shared/youtube.ts'
 import { askJson } from '../_shared/gemini.ts'
 import { linesWithTimes, normalize, renderForModel, SYSTEM } from '../_shared/timeline.ts'
 import { recapUrl } from '../_shared/sign.ts'
+import { verifySvix } from '../_shared/svix.ts'
 
 const SECRET = Deno.env.get('RECORDER_SECRET') ?? ''
 const BOT_NAME = Deno.env.get('BOT_NAME') ?? 'Notetaker'
@@ -80,10 +82,25 @@ async function ingest(botId: string, orgHint: string | null): Promise<{ id: stri
 
 /* ── 3. publish ────────────────────────────────────────────────────────── */
 
+/**
+ * Claim a meeting for upload: one conditional update that only a row still
+ * waiting to publish can pass. The webhook and the sweep both go through it,
+ * so however many "done" events and sweeps overlap, one of them uploads.
+ */
+async function claim(id: string) {
+  const { data } = await db.from('meetings')
+    .update({ publish_status: 'publishing', updated_at: now() })
+    .eq('id', id).in('publish_status', ['pending', 'failed']).is('publish_post_id', null)
+    .select('id, org, recall_bot_id, title, started_at, publish_attempts')
+  return data && data.length ? data[0] : null
+}
+
 async function publish(m: { id: string; org: string; recall_bot_id: string; title: string | null; started_at: string | null; publish_attempts: number }) {
   const settings = await settingsFor(m.org)
   if (!settings.youtube_account_id) {
     await db.from('meetings').update({
+      // Back to pending (it may have been claimed), so it publishes once a channel is set.
+      publish_status: 'pending',
       publish_error: `no YouTube channel chosen for "${m.org}": set recorder_settings.youtube_account_id to your Zernio YouTube account id`,
       updated_at: now(),
     }).eq('id', m.id)
@@ -226,7 +243,10 @@ async function sweep() {
     .not('recall_bot_id', 'is', null).not('full_text', 'is', null)
     .is('recall_media_deleted_at', null)
     .lt('publish_attempts', MAX_PUBLISH_ATTEMPTS).limit(5)
-  result.published = await Promise.all((toPublish ?? []).map(publish))
+  result.published = await Promise.all((toPublish ?? []).map(async (m) => {
+    const mine = await claim(m.id)
+    return mine ? publish(mine) : { id: m.id, skipped: 'claimed elsewhere' }
+  }))
 
   // 4. resolve
   const { data: inFlight } = await db.from('meetings')
@@ -260,11 +280,59 @@ function isDone(body: Record<string, any>): boolean {
   return event === 'recording.done' || event === 'bot.done' || code === 'done'
 }
 
+/**
+ * Recall's webhook: the moment a recording is done, store it, start the
+ * upload and build the timeline, in this one request.
+ *
+ * Signed by Recall (Svix) when RECALL_SVIX_SECRET is set, which is how
+ * Recall's dashboard webhooks authenticate; otherwise `?secret=` must match.
+ * Recall sends recording.done AND bot.done for the same bot and retries what
+ * it thinks failed, so the upload is CLAIMED with one conditional update
+ * first: whichever event gets there first uploads, the rest stop.
+ */
+async function webhook(req: Request, url: URL): Promise<Response> {
+  const raw = await req.text()
+  const svixSecret = Deno.env.get('RECALL_SVIX_SECRET') ?? ''
+  if (svixSecret) {
+    const v = await verifySvix(raw, req.headers, svixSecret)
+    if (!v.ok) return json({ error: 'unauthorized' }, 401)
+  } else if (!authorized(req, url)) {
+    return json({ error: 'unauthorized' }, 401)
+  }
+  let body: Record<string, any> = {}
+  try { body = JSON.parse(raw || '{}') } catch { body = {} }
+  const botId = botIdFrom(body)
+  const event = String(body?.event ?? '')
+  // Acknowledge everything else fast; Recall retries non-2xx.
+  if (!botId || (!isDone(body) && event !== 'transcript.done')) return json({ ok: true, ignored: event || 'no bot' })
+
+  const { data: row } = await db.from('meetings').select('org').eq('recall_bot_id', botId).maybeSingle()
+  const got = await ingest(botId, row?.org ?? body?.data?.bot?.metadata?.org ?? null)
+
+  let upload: unknown = null
+  if (isDone(body)) {
+    const mine = await claim(got.id)
+    upload = mine ? await publish(mine) : { skipped: 'already publishing or published' }
+  }
+
+  // Next steps + timeline now, not on the next sweep.
+  const { data: m } = await db.from('meetings')
+    .select('id, full_text, started_at, ended_at, timeline_at, timeline_attempts').eq('id', got.id).single()
+  const timeline = m && m.full_text && !m.timeline_at ? await buildTimeline(m) : { skipped: m?.timeline_at ? 'already built' : 'no transcript yet' }
+  return json({ ok: true, ...got, upload, timeline })
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   const url = new URL(req.url)
-  if (!authorized(req, url)) return json({ error: 'unauthorized' }, 401)
   const action = url.searchParams.get('action') ?? ''
+  if (action === 'webhook' && req.method === 'POST') {
+    try { return await webhook(req, url) } catch (e) {
+      console.error('[recorder] webhook', e)
+      return json({ ok: false, error: String((e as Error).message).slice(0, 300) }, 500)
+    }
+  }
+  if (!authorized(req, url)) return json({ error: 'unauthorized' }, 401)
 
   try {
     if (action === 'status' && req.method === 'GET') {
@@ -291,21 +359,6 @@ Deno.serve(async (req) => {
       }).select('id').single()
       if (error) throw new Error(error.message)
       return json({ ok: true, meetingId: data.id, botId: bot.id })
-    }
-
-    if (action === 'webhook') {
-      // Acknowledge fast; Recall retries non-2xx. Only "done" does any work.
-      const botId = botIdFrom(body)
-      if (!botId || !isDone(body)) return json({ ok: true, ignored: body?.event ?? 'no bot' })
-      const { data: row } = await db.from('meetings').select('org').eq('recall_bot_id', botId).maybeSingle()
-      const got = await ingest(botId, row?.org ?? body?.data?.bot?.metadata?.org ?? null)
-      // Start the upload now rather than waiting for the next sweep. The sweep
-      // still catches it if this fails.
-      const { data: m } = await db.from('meetings')
-        .select('id, org, recall_bot_id, title, started_at, publish_attempts, publish_status, publish_post_id')
-        .eq('id', got.id).single()
-      const upload = m && m.publish_status === 'pending' && !m.publish_post_id ? await publish(m) : null
-      return json({ ok: true, ...got, upload })
     }
 
     if (action === 'sweep') return json({ ok: true, ...(await sweep()), at: now() })
