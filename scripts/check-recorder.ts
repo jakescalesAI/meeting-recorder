@@ -259,6 +259,14 @@ check('entries carry their times', good.body.entries.map((e: Row) => e.at).join(
 const bad = await open('0'.repeat(64))
 check('a tampered signature is refused', bad.status === 401)
 
+console.log('\nj. the gallery list')
+const listed = await realFetch('http://localhost:8601/?action=list', { headers: { 'x-recorder-secret': SECRET } }).then(async (x) => ({ status: x.status, body: await x.json() }))
+const ours = (listed.body.meetings ?? []).find((m: Row) => m.id === meeting().id)
+check('list answers with meetings', listed.status === 200 && Array.isArray(listed.body.meetings), JSON.stringify(listed.body).slice(0, 200))
+check('a published meeting carries its YouTube id', ours?.youtubeId === 'AAAAAAAAAAA', JSON.stringify(ours))
+check('and its next steps and a signed recap link', ours?.nextSteps?.length === 1 && String(ours?.recapUrl).startsWith('https://recap.example.com/?id='), JSON.stringify(ours))
+check('list without the key is refused', (await realFetch('http://localhost:8601/?action=list')).status === 401)
+
 console.log('\ni. Recall webhook, signed')
 async function signed(event: string, botId: string, key = SVIX_KEY, sign = true) {
   const raw = JSON.stringify({ event, data: { bot: { id: botId, metadata: { org: 'default', source: 'meeting-recorder' } }, data: { code: 'done' } } })

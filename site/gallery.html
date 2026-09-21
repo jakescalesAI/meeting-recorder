@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meetings</title>
+<!-- The owner's view of every recorded call. Private: never indexed. -->
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<script src="config.js"></script>
+<style>
+  :root {
+    --ground: #f7f4ef; --surface: #ffffff; --ink: #202020; --muted: #6b6358; --dim: #8a8176;
+    --border: #e7e0d6; --border-strong: #d6cdbf; --accent: #8c5a3c; --accent-soft: #f1e6de;
+    --ok: #2f7a4d; --ok-soft: #e4f2e9; --warn: #9a6a12; --warn-soft: #f8eed8; --bad: #a33a2b; --bad-soft: #f7e3df;
+    --r: 18px; --r-inner: 10px;
+    --font: Inter, 'Segoe UI', -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--ground); color: var(--ink); font: 15px/1.5 var(--font); -webkit-font-smoothing: antialiased; }
+  .hidden { display: none !important; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 22px 16px 64px; }
+  .bar { display: flex; align-items: center; gap: 10px; font-weight: 700; margin-bottom: 18px; }
+  .bar img { width: 26px; height: 26px; border-radius: 6px; object-fit: contain; }
+  h1 { font-size: clamp(1.6rem, 4vw, 2.1rem); font-weight: 800; letter-spacing: -.03em; line-height: 1.1; margin: 0 0 6px; }
+  .lede { margin: 0 0 22px; color: var(--muted); }
+  .sample { display: inline-block; margin-left: 8px; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 2px 9px; vertical-align: middle; }
+  .grid { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+  .card { display: flex; flex-direction: column; overflow: hidden; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); }
+  .player { position: relative; aspect-ratio: 16 / 9; background: #111; }
+  .player iframe, .player img, .player button { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+  .player img { object-fit: cover; opacity: .92; }
+  .player button { background: none; cursor: pointer; padding: 0; }
+  .player button:hover img { opacity: 1; }
+  .still { position: absolute; inset: 0; background: radial-gradient(120% 90% at 30% 20%, #a8744f 0%, #6e452c 45%, #2a1a10 100%); }
+  .play { position: absolute; inset: 0; display: grid; place-items: center; }
+  .play svg { width: 54px; height: 54px; filter: drop-shadow(0 2px 8px rgba(0,0,0,.45)); }
+  .ph { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 18px; color: #d8d2c8; font-size: 13px; }
+  .ph b { display: block; font-size: 14px; color: #f3eee7; margin-bottom: 2px; }
+  .body { display: flex; flex-direction: column; gap: 10px; flex: 1; padding: 16px 18px 18px; }
+  .t { margin: 0; font-weight: 700; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .meta { margin: 0; color: var(--muted); font-size: 13px; }
+  .pills { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pill { font-size: 12px; font-weight: 600; border-radius: 999px; padding: 2px 9px; }
+  .pill.ok { color: var(--ok); background: var(--ok-soft); } .pill.warn { color: var(--warn); background: var(--warn-soft); }
+  .pill.bad { color: var(--bad); background: var(--bad-soft); } .pill.mute { color: var(--muted); background: var(--ground); }
+  .steps { flex: 1; }
+  .steps h2 { margin: 0 0 4px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
+  .steps ul { margin: 0; padding: 0; list-style: none; }
+  .steps li { font-size: 13px; color: var(--muted); padding: 2px 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .steps li b { color: var(--ink); font-weight: 600; }
+  .steps p { margin: 0; font-size: 13px; color: var(--dim); }
+  .acts { display: flex; flex-wrap: wrap; gap: 8px; border-top: 1px solid var(--border); padding-top: 12px; }
+  .btn { display: inline-flex; align-items: center; min-height: 34px; padding: 0 12px; border-radius: var(--r-inner); border: 1px solid var(--border-strong); background: var(--surface); color: var(--ink); font: inherit; font-size: 13px; font-weight: 600; text-decoration: none; cursor: pointer; }
+  .btn:hover { border-color: var(--ink); }
+  .key { max-width: 440px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 20px; }
+  .key label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  .key input { width: 100%; font: inherit; padding: 9px 11px; border: 1px solid var(--border-strong); border-radius: var(--r-inner); margin-bottom: 10px; }
+  .key p { margin: 8px 0 0; font-size: 12px; color: var(--dim); }
+  .state { color: var(--muted); padding: 40px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="bar" id="brand"></div>
+  <h1>Meetings<span class="sample hidden" id="sampleTag">Sample data</span></h1>
+  <p class="lede">Every recorded call: the video, what was agreed, and the recap page to send.</p>
+
+  <form class="key hidden" id="keyForm">
+    <label for="key">Recorder key</label>
+    <input id="key" type="password" autocomplete="off" placeholder="Your RECORDER_SECRET">
+    <button class="btn" type="submit">Show meetings</button>
+    <p>Kept in this browser only. It is the same secret your recorder function checks.</p>
+  </form>
+  <div class="state" id="state">Loading…</div>
+  <ul class="grid" id="grid"></ul>
+</div>
+
+<script>
+(function () {
+  var CFG = window.RECAP_CONFIG || {};
+  var API = CFG.recorder || "";
+  var q = new URLSearchParams(location.search);
+  var MOCK = q.get("mock") === "1" || q.get("sample") === "1";
+  var $ = function (i) { return document.getElementById(i); };
+  var esc = function (s) { var d = document.createElement("div"); d.textContent = s == null ? "" : String(s); return d.innerHTML; };
+  var PLAY = '<svg viewBox="0 0 68 48" aria-hidden="true"><path d="M66.5 7.7a8.6 8.6 0 0 0-6-6C55.2 0 34 0 34 0S12.8 0 7.5 1.7a8.6 8.6 0 0 0-6 6C0 13 0 24 0 24s0 11 1.5 16.3a8.6 8.6 0 0 0 6 6C12.8 48 34 48 34 48s21.2 0 26.5-1.7a8.6 8.6 0 0 0 6-6C68 35 68 24 68 24s0-11-1.5-16.3z" fill="#c4302b"/><path d="M45 24 27 14v20z" fill="#fff"/></svg>';
+  var store = { get: function () { try { return localStorage.getItem("recorder.key") || ""; } catch (e) { return ""; } },
+                set: function (v) { try { localStorage.setItem("recorder.key", v); } catch (e) {} } };
+
+  function when(iso) { try { return new Date(iso).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }); } catch (e) { return ""; } }
+  function mins(a, b) { var m = Math.round((Date.parse(b) - Date.parse(a)) / 60000); return m > 0 ? m + " min" : ""; }
+  function status(m) {
+    if (m.status === "published" && m.youtubeId) return ["On YouTube", "ok"];
+    if (m.status === "publishing") return ["Uploading", "warn"];
+    if (m.status === "failed") return ["Upload retrying", "bad"];
+    return ["Processing", "mute"];
+  }
+
+  function card(m) {
+    var st = status(m);
+    var player = m.sampleVideo
+      ? '<button type="button" data-sample="1" aria-label="Play the sample recording"><span class="still"></span><span class="play">' + PLAY + '</span></button>'
+      : m.youtubeId
+      ? '<button type="button" data-yt="' + esc(m.youtubeId) + '" aria-label="Play the recording"><img alt="" loading="lazy" src="https://i.ytimg.com/vi/' + encodeURIComponent(m.youtubeId) + '/hqdefault.jpg"><span class="play">' + PLAY + "</span></button>"
+      : '<div class="ph"><div><b>' + esc(st[0]) + "</b>The video appears here once YouTube has it.</div></div>";
+    var steps = (m.nextSteps || []).filter(function (s) { return s && s.text; });
+    var stepsHtml = steps.length
+      ? "<ul>" + steps.map(function (s) { return "<li>" + (s.owner ? "<b>" + esc(s.owner) + ":</b> " : "") + esc(s.text) + "</li>"; }).join("") +
+        (m.moreSteps ? '<li style="color:var(--dim)">+' + m.moreSteps + " more on the recap page</li>" : "") + "</ul>"
+      : "<p>" + (m.analysed ? "None were agreed on this call." : m.hasTranscript ? "Being written now." : "Waiting for the transcript.") + "</p>";
+    return '<li class="card"><div class="player">' + player + '</div><div class="body">' +
+      '<div><p class="t" title="' + esc(m.title || "Call") + '">' + esc(m.title || "Call") + '</p><p class="meta">' + esc([when(m.startedAt), mins(m.startedAt, m.endedAt)].filter(Boolean).join("  ·  ")) + "</p></div>" +
+      '<div class="pills"><span class="pill ' + st[1] + '">' + esc(st[0]) + '</span><span class="pill ' + (m.analysed ? "ok" : "mute") + '">' + (m.analysed ? "Analysed" : "Analysis pending") + "</span></div>" +
+      '<div class="steps"><h2>Next steps</h2>' + stepsHtml + "</div>" +
+      '<div class="acts">' + (m.recapUrl ? '<a class="btn" href="' + esc(m.recapUrl) + '" target="_blank" rel="noreferrer">Recap page</a><button class="btn" type="button" data-copy="' + esc(m.recapUrl) + '">Copy link</button>' : '<span class="meta">Recap link: set recap_site_url</span>') +
+      "</div></div></li>";
+  }
+
+  function render(list, brand) {
+    brand = brand || CFG.brand || {};
+    if (/^#[0-9a-f]{6}$/i.test(brand.accent || "")) document.documentElement.style.setProperty("--accent", brand.accent);
+    $("brand").innerHTML = (brand.logoUrl ? '<img alt="" src="' + esc(brand.logoUrl) + '">' : "") + esc(brand.name || "");
+    $("state").classList.toggle("hidden", list.length > 0);
+    if (!list.length) $("state").textContent = "No meetings yet. Send the notetaker to a call and it appears here when the call ends.";
+    $("grid").innerHTML = list.map(card).join("");
+  }
+
+  // One listener for the whole grid: play swaps the still for the player.
+  $("grid").addEventListener("click", function (ev) {
+    var p = ev.target.closest("button[data-yt]");
+    if (p) {
+      var f = document.createElement("iframe");
+      f.title = "Meeting recording";
+      f.allow = "autoplay; encrypted-media; picture-in-picture; fullscreen";
+      f.allowFullscreen = true;
+      f.referrerPolicy = "strict-origin-when-cross-origin";
+      f.src = "https://www.youtube-nocookie.com/embed/" + encodeURIComponent(p.dataset.yt) + "?autoplay=1&rel=0&modestbranding=1&playsinline=1";
+      p.replaceWith(f);
+      return;
+    }
+    var sm = ev.target.closest("button[data-sample]");
+    if (sm) {
+      var note = document.createElement("div");
+      note.className = "ph";
+      note.innerHTML = "<div><b>Sample data</b>In your install, this call's unlisted YouTube recording plays right here.</div>";
+      sm.replaceWith(note);
+      return;
+    }
+    var c = ev.target.closest("button[data-copy]");
+    if (c && navigator.clipboard) navigator.clipboard.writeText(c.dataset.copy).then(function () { c.textContent = "Copied"; });
+  });
+
+  function load(key) {
+    $("state").textContent = "Loading…";
+    fetch(API + "?action=list", { headers: { "x-recorder-secret": key } })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) throw new Error(r.status === 401 ? "That key was not accepted." : (j.error || "The list did not load (" + r.status + ").")); return j; }); })
+      .then(function (j) { $("keyForm").classList.add("hidden"); render(j.meetings || []); })
+      .catch(function (e) { $("keyForm").classList.remove("hidden"); $("state").classList.remove("hidden"); $("state").textContent = e.message; });
+  }
+
+  // SAMPLE DATA, on any host, for demos and the Marketplace preview. No
+  // request is made and the page says it is a sample.
+  if (MOCK) {
+    $("sampleTag").classList.remove("hidden");
+    render([
+      { title: "Discovery call — Northwind Landscaping", startedAt: "2026-09-17T17:00:00Z", endedAt: "2026-09-17T17:56:00Z", status: "published", youtubeId: "sample", sampleVideo: true, analysed: true, hasTranscript: true,
+        nextSteps: [{ owner: "Jake", text: "Send a written plan with scope, timeline and price by Friday." }, { owner: "Kevin", text: "Share read access to the lead spreadsheet." }, { owner: "Kevin", text: "Book the plan review for next week." }], moreSteps: 1, recapUrl: "index.html?mock=1" },
+      { title: "Pilot kickoff — Harbor Advisory", startedAt: "2026-09-15T14:00:00Z", endedAt: "2026-09-15T14:25:00Z", status: "publishing", youtubeId: null, analysed: true, hasTranscript: true,
+        nextSteps: [{ owner: "Andrew", text: "Confirm the pilot team of five." }], moreSteps: 0, recapUrl: "index.html?mock=1" },
+      { title: "Intro call — Sam Lee", startedAt: "2026-09-21T15:00:00Z", endedAt: "2026-09-21T15:31:00Z", status: "pending", youtubeId: null, analysed: false, hasTranscript: true, nextSteps: [], moreSteps: 0, recapUrl: "index.html?mock=1" },
+    ], { name: "Your Company", accent: "#8c5a3c" });
+    return;
+  }
+
+  if (!API || API.indexOf("<project-ref>") !== -1) { $("state").textContent = "This page is not configured yet: set the recorder function URL in config.js."; return; }
+  $("keyForm").addEventListener("submit", function (ev) { ev.preventDefault(); var k = $("key").value.trim(); if (k) { store.set(k); load(k); } });
+  var saved = store.get();
+  if (saved) load(saved); else { $("keyForm").classList.remove("hidden"); $("state").classList.add("hidden"); }
+})();
+</script>
+</body>
+</html>

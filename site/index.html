@@ -211,8 +211,10 @@
     show($("content"));
   }
 
-  // Design preview with sample data, on localhost only: /?sample=1
-  if (q.get("sample") === "1" && /^(localhost|127\.0\.0\.1)$/.test(location.hostname)) {
+  // SAMPLE DATA, on any host (demos, the Marketplace preview): ?mock=1, or the
+  // older ?sample=1. It makes no request, and the page labels itself a sample.
+  if (q.get("mock") === "1" || q.get("sample") === "1") {
+    document.querySelector(".label").textContent = "Meeting recap · sample data";
     render({
       title: "Discovery call", startedAt: "2026-09-22T15:15:00Z", endedAt: "2026-09-22T15:58:00Z", youtubeId: null,
       brand: { name: "Your Company", accent: "#8c5a3c" },

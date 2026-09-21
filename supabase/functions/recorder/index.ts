@@ -4,6 +4,7 @@
 //   POST ?action=webhook   (Recall calls this)            store, upload and build the timeline the moment a recording is done
 //   POST ?action=sweep     (cron)                         catch up on everything below
 //   POST ?action=link      { id }                         the signed recap URL for a meeting
+//   GET  ?action=list                                     the gallery: newest meetings with video, status, next steps
 //   GET  ?action=status                                   counts, for a quick look
 //
 // Every call needs RECORDER_SECRET as the `x-recorder-secret` header. Recall's
@@ -21,7 +22,7 @@
 import { db, json, cors, ORG_RE, settingsFor } from '../_shared/db.ts'
 import { createBot, deleteMedia, fetchRecording, listFinished, type Segment } from '../_shared/recall.ts'
 import { publishVideo, postState, youtubeTitle } from '../_shared/zernio.ts'
-import { youtubePlays } from '../_shared/youtube.ts'
+import { youtubeId, youtubePlays } from '../_shared/youtube.ts'
 import { askJson } from '../_shared/gemini.ts'
 import { linesWithTimes, normalize, renderForModel, SYSTEM } from '../_shared/timeline.ts'
 import { recapUrl } from '../_shared/sign.ts'
@@ -335,6 +336,33 @@ Deno.serve(async (req) => {
   if (!authorized(req, url)) return json({ error: 'unauthorized' }, 401)
 
   try {
+    // The gallery: newest meetings first, with what a card shows.
+    if (action === 'list' && req.method === 'GET') {
+      const { data, error } = await db.from('meetings')
+        .select('id, org, title, started_at, ended_at, publish_status, youtube_url, timeline, full_text')
+        .order('started_at', { ascending: false }).limit(60)
+      if (error) throw new Error(error.message)
+      const sites = new Map<string, string | null>()
+      const meetings = []
+      for (const m of data ?? []) {
+        if (!sites.has(m.org)) sites.set(m.org, (await settingsFor(m.org)).recap_site_url)
+        const steps = Array.isArray(m.timeline?.nextSteps) ? m.timeline.nextSteps : []
+        meetings.push({
+          id: m.id,
+          title: m.title,
+          startedAt: m.started_at,
+          endedAt: m.ended_at,
+          status: m.publish_status,
+          youtubeId: m.publish_status === 'published' ? youtubeId(m.youtube_url) : null,
+          hasTranscript: Boolean(m.full_text),
+          analysed: Boolean(m.timeline),
+          nextSteps: steps.slice(0, 3),
+          moreSteps: Math.max(0, steps.length - 3),
+          recapUrl: await recapUrl(sites.get(m.org), m.id),
+        })
+      }
+      return json({ ok: true, meetings })
+    }
     if (action === 'status' && req.method === 'GET') {
       const { data } = await db.from('meetings').select('publish_status, timeline_at, recall_media_deleted_at')
       const rows = data ?? []

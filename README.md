@@ -20,8 +20,8 @@ Signed recap link ──► recap page
    next steps  →  YouTube player  →  timeline (click to jump)  →  downloads
 ```
 
-Built on Supabase: Postgres, two Edge Functions and a cron job. The recap page
-is one static HTML file you can host anywhere.
+Built on Supabase: Postgres, two Edge Functions and a cron job. The gallery and
+the recap page are static HTML files you can host anywhere.
 
 ## What it costs to run
 
@@ -112,8 +112,13 @@ Subscribe it to `recording.done`, `bot.done` and `transcript.done`, then copy th
 endpoint's signing secret (`whsec_...`) into `RECALL_SVIX_SECRET` and run step 2
 again. From then on only deliveries signed by Recall are accepted.
 
-**7. The recap page.** Put your recap function URL in `site/config.js` and host
-the `site/` folder anywhere (Netlify, Vercel, Cloudflare Pages, S3, nginx).
+**7. The pages.** Put your two function URLs in `site/config.js` and host the
+`site/` folder anywhere (Netlify, Vercel, Cloudflare Pages, S3, nginx):
+
+- `gallery.html`: your meetings as cards: the video (plays in the card), who
+  and when, status, the first next steps, and the recap link to send. It asks
+  once for your `RECORDER_SECRET` and keeps it in that browser.
+- `index.html`: the recap page a client opens from the signed link.
 
 ## Use it
 
@@ -139,8 +144,8 @@ See what's in flight:
 curl "https://<project-ref>.supabase.co/functions/v1/recorder?action=status" -H "x-recorder-secret: <RECORDER_SECRET>"
 ```
 
-Preview the recap page's design with sample data: serve `site/` on localhost
-and open `/?sample=1`.
+See both pages with sample data, no setup and no requests: open
+`gallery.html?mock=1` or `index.html?mock=1` (any host).
 
 ## Safety rules it follows
 
